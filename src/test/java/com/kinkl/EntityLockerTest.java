@@ -4,6 +4,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
+import org.junit.rules.Timeout;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -14,6 +15,10 @@ public class EntityLockerTest {
 
     @Rule
     public ExpectedException expectedRule = ExpectedException.none();
+
+    @Rule
+    public Timeout timeout = new Timeout(10, TimeUnit.SECONDS);
+
     private IEntityLocker<Integer> entityLocker;
 
     @Before
@@ -154,6 +159,40 @@ public class EntityLockerTest {
         this.entityLocker.lock(entity.getId());
         this.entityLocker.unlock(entity.getId());
         assertEquals("D", entity.getValue());
+    }
+
+    @Test
+    public void testReentrantLocking() {
+        CountDownLatch subThreadIsAboutToUnlockEntityLatch = new CountDownLatch(1);
+        CountDownLatch subThreadLockedEntityLatch = new CountDownLatch(1);
+        Thread subThread = new Thread(() -> {
+            this.entityLocker.lock(123);
+            this.entityLocker.lock(123);
+            this.entityLocker.lock(123);
+            subThreadLockedEntityLatch.countDown();
+            try {
+                subThreadIsAboutToUnlockEntityLatch.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                fail();
+            }
+            this.entityLocker.unlock(123);
+            this.entityLocker.unlock(123);
+            this.entityLocker.unlock(123);
+        });
+        subThread.start();
+
+        try {
+            subThreadLockedEntityLatch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
+
+        assertTrue(this.entityLocker.isLockedByAnotherThread(123));
+        subThreadIsAboutToUnlockEntityLatch.countDown();
+        this.entityLocker.lock(123);
+        this.entityLocker.lock(123);
+        this.entityLocker.unlock(123);
+        this.entityLocker.unlock(123);
     }
 
     private static class SimpleEntity {
