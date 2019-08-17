@@ -7,6 +7,7 @@ import org.junit.rules.ExpectedException;
 import org.junit.rules.Timeout;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
@@ -307,6 +308,59 @@ public class EntityLockerTest {
         }
         assertTrue(lockAcquired);
         this.entityLocker.unlock(123);
+    }
+
+    @Test
+    public void testDifferentPartsOfCodeThatProtectedByDifferentEntitiesRunSimultaneously() {
+        CountDownLatch threadsAreReadyToLockLatch = new CountDownLatch(100);
+        CountDownLatch threadsAreAllowedToLockLatch = new CountDownLatch(1);
+        CountDownLatch threadsLockedLockLatch = new CountDownLatch(100);
+        CountDownLatch threadsAreAllowedToUnLockLatch = new CountDownLatch(1);
+        CountDownLatch threadsUnlockedLockLatch = new CountDownLatch(100);
+        for (int i = 0; i < 100; i++) {
+            int entityId = i;
+            Thread thread = new Thread(() -> {
+                threadsAreReadyToLockLatch.countDown();
+                try {
+                    threadsAreAllowedToLockLatch.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    fail();
+                }
+                this.entityLocker.lock(entityId);
+                threadsLockedLockLatch.countDown();
+                try {
+                    // Pretend that thread performs some work that consumes some time
+                    Thread.sleep(ThreadLocalRandom.current().nextInt(500, 1000));
+                } catch (InterruptedException e) {
+                    fail();
+                }
+                try {
+                    threadsAreAllowedToUnLockLatch.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    fail();
+                }
+                this.entityLocker.unlock(entityId);
+                threadsUnlockedLockLatch.countDown();
+            });
+            thread.start();
+        }
+        try {
+            threadsAreReadyToLockLatch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
+        threadsAreAllowedToLockLatch.countDown();
+        try {
+            threadsLockedLockLatch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
+        threadsAreAllowedToUnLockLatch.countDown();
+        try {
+            threadsUnlockedLockLatch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
     }
 
     private static class SimpleEntity {
