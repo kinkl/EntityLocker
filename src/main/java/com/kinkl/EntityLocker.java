@@ -3,6 +3,7 @@ package com.kinkl;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -16,6 +17,18 @@ public class EntityLocker<T> implements IEntityLocker<T> {
 
     @Override
     public void lock(T entityId) {
+        Lock lock = checkLockExists(entityId);
+        lock.lock();
+    }
+
+    @Override
+    public boolean tryLock(T entityId, long timeout, TimeUnit unit) throws InterruptedException {
+        Objects.requireNonNull(unit);
+        Lock lock = checkLockExists(entityId);
+        return lock.tryLock(timeout, unit);
+    }
+
+    private Lock checkLockExists(T entityId) {
         Objects.requireNonNull(entityId);
         Lock lock = this.entityLocks.get(entityId);
         if (lock == null) {
@@ -25,7 +38,7 @@ public class EntityLocker<T> implements IEntityLocker<T> {
                 lock = newLock;
             }
         }
-        lock.lock();
+        return lock;
     }
 
     @Override

@@ -1,5 +1,7 @@
 package com.kinkl;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * TODO add javadoc
  * @param <T>
@@ -24,4 +26,14 @@ public interface IEntityLocker<T> {
      * @param entityId
      */
     boolean isLockedByAnotherThread(T entityId);
+
+    /**
+     * TODO add javadoc
+     * @param entityId
+     * @param timeout
+     * @param unit
+     * @return
+     * @throws InterruptedException
+     */
+    boolean tryLock(T entityId, long timeout, TimeUnit unit) throws InterruptedException;
 }

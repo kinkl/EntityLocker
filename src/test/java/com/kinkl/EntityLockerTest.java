@@ -23,13 +23,25 @@ public class EntityLockerTest {
 
     @Before
     public void setUp() {
-        this.entityLocker = new EntityLocker<Integer>();
+        this.entityLocker = new EntityLocker<>();
     }
 
     @Test
     public void testLockThrowsExceptionWhenArgumentIsNull() {
         this.expectedRule.expect(NullPointerException.class);
         this.entityLocker.lock(null);
+    }
+
+    @Test
+    public void testTryLockThrowsExceptionWhenEntityIdIsNull() throws InterruptedException {
+        this.expectedRule.expect(NullPointerException.class);
+        this.entityLocker.tryLock(null, 10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    public void testTryLockThrowsExceptionWhenTimeUnitIsNull() throws InterruptedException {
+        this.expectedRule.expect(NullPointerException.class);
+        this.entityLocker.tryLock(123, 10, null);
     }
 
     @Test
@@ -192,6 +204,108 @@ public class EntityLockerTest {
         this.entityLocker.lock(123);
         this.entityLocker.lock(123);
         this.entityLocker.unlock(123);
+        this.entityLocker.unlock(123);
+    }
+
+    @Test
+    public void testTryLockTimeout() {
+        // This test should run 3 seconds (see call of tryLock method below)
+        CountDownLatch subThreadIsAboutToUnlockEntityLatch = new CountDownLatch(1);
+        CountDownLatch subThreadLockedEntityLatch = new CountDownLatch(1);
+        Thread subThread = new Thread(() -> {
+            this.entityLocker.lock(123);
+            subThreadLockedEntityLatch.countDown();
+            try {
+                subThreadIsAboutToUnlockEntityLatch.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                fail();
+            }
+            this.entityLocker.unlock(123);
+        });
+        subThread.start();
+
+        try {
+            subThreadLockedEntityLatch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
+        boolean lockHasNotBeenAcquired = false;
+        try {
+            lockHasNotBeenAcquired = !this.entityLocker.tryLock(123, 3, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
+        assertTrue(lockHasNotBeenAcquired);
+        assertTrue(this.entityLocker.isLockedByAnotherThread(123));
+
+        subThreadIsAboutToUnlockEntityLatch.countDown();
+
+        boolean lockAcquired = false;
+        try {
+            lockAcquired = this.entityLocker.tryLock(123, 3, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
+        assertTrue(lockAcquired);
+        this.entityLocker.unlock(123);
+    }
+
+    @Test
+    public void testTryLockInterruption() {
+        // This test should run 1 second (see call of tryLock method below)
+        CountDownLatch subThreadIsAboutToUnlockEntityLatch = new CountDownLatch(1);
+        CountDownLatch subThreadLockedEntityLatch = new CountDownLatch(1);
+        CountDownLatch mainIsAboutToBeInterruptedLatch = new CountDownLatch(1);
+        Thread mainThread = Thread.currentThread();
+        Thread subThread = new Thread(() -> {
+            this.entityLocker.lock(123);
+            subThreadLockedEntityLatch.countDown();
+            try {
+                mainIsAboutToBeInterruptedLatch.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                fail();
+            }
+            try {
+                // Pretend that something heavy and important is being done in this thread to make main thread wait for the lock
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                fail();
+            }
+            mainThread.interrupt();
+            try {
+                subThreadIsAboutToUnlockEntityLatch.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                fail();
+            }
+            this.entityLocker.unlock(123);
+        });
+        subThread.start();
+
+        try {
+            subThreadLockedEntityLatch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
+        mainIsAboutToBeInterruptedLatch.countDown();
+
+        boolean mainIsInterrupted;
+        try {
+            this.entityLocker.tryLock(123, 3, TimeUnit.SECONDS);
+            mainIsInterrupted = false;
+        } catch (InterruptedException e) {
+            mainIsInterrupted = true;
+        }
+        assertTrue(mainIsInterrupted);
+
+        assertTrue(this.entityLocker.isLockedByAnotherThread(123));
+        subThreadIsAboutToUnlockEntityLatch.countDown();
+        boolean lockAcquired = false;
+        try {
+            lockAcquired = this.entityLocker.tryLock(123, 3, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            fail();
+        }
+        assertTrue(lockAcquired);
         this.entityLocker.unlock(123);
     }
 
