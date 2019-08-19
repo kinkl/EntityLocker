@@ -363,6 +363,40 @@ public class EntityLockerTest {
         }
     }
 
+    @Test
+    public void testDeadlockIsPrevented() {
+        this.expectedRule.expect(IllegalStateException.class);
+        this.expectedRule.expectMessage("Thread [Main Thread] cannot lock entity with id 456 because this will cause a deadlock. This entity is already locked by thread [Sub Thread]");
+        Thread.currentThread().setName("Main Thread");
+        CountDownLatch mainThreadIsAboutToCauseDeadlockLatch = new CountDownLatch(1);
+        CountDownLatch mainThreadLockedEntityLatch = new CountDownLatch(1);
+        Thread subThread = new Thread(() -> {
+            try {
+                mainThreadLockedEntityLatch.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                fail();
+            }
+
+            assertTrue(this.entityLocker.isLockedByAnotherThread(123));
+            this.entityLocker.lock(456);
+            mainThreadIsAboutToCauseDeadlockLatch.countDown();
+            this.entityLocker.lock(123);
+        });
+        subThread.setName("Sub Thread");
+        subThread.start();
+
+        this.entityLocker.lock(123);
+        mainThreadLockedEntityLatch.countDown();
+        try {
+            mainThreadIsAboutToCauseDeadlockLatch.await(10, TimeUnit.SECONDS);
+            Thread.sleep(3000); // Sub thread should try to acquire the second lock before the main thread
+        } catch (InterruptedException e) {
+            fail();
+        }
+        this.entityLocker.lock(456);
+        fail();
+    }
+
     private static class SimpleEntity {
 
         private final int id;
