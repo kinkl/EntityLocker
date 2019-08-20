@@ -93,16 +93,15 @@ public class EntityLocker<T> implements IEntityLocker<T> {
         if (lock == null) {
             throw new MissingEntityLockException(String.format("There is no associated locks for entity with id %s", entityId.toString()));
         }
-        if (lock.isHeldByCurrentThread()) {
-            if (lock.getHoldCount() == 1) {
-                synchronized (this.threadLockMapLock) {
-                    this.lockedEntityToThreadMap.remove(entityId);
-                }
-            }
-            lock.unlock();
-        } else {
+        if (!lock.isHeldByCurrentThread()) {
             throw new OtherThreadEntityUnlockAttemptException(String.format("The lock of entity with id %s is held by another thread", entityId.toString()));
         }
+        if (lock.getHoldCount() == 1) {
+            synchronized (this.threadLockMapLock) {
+                this.lockedEntityToThreadMap.remove(entityId);
+            }
+        }
+        lock.unlock();
     }
 
     @Override
