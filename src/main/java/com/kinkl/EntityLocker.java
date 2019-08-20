@@ -1,5 +1,9 @@
 package com.kinkl;
 
+import com.kinkl.exception.DeadlockThreatException;
+import com.kinkl.exception.MissingEntityLockException;
+import com.kinkl.exception.OtherThreadEntityUnlockAttemptException;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -63,7 +67,7 @@ public class EntityLocker<T> implements IEntityLocker<T> {
                         Thread.currentThread().getName(),
                         entityId,
                         this.lockedEntityToThreadMap.get(entityId).getName());
-                throw new IllegalStateException(msg);
+                throw new DeadlockThreatException(msg);
             }
             nextEntityId = this.threadToPendingEntityLockMap.get(thread);
         }
@@ -87,7 +91,7 @@ public class EntityLocker<T> implements IEntityLocker<T> {
         Objects.requireNonNull(entityId);
         ReentrantLock lock = this.entityLocks.get(entityId);
         if (lock == null) {
-            throw new IllegalStateException(String.format("There is no associated locks for entity with id %s", entityId.toString()));
+            throw new MissingEntityLockException(String.format("There is no associated locks for entity with id %s", entityId.toString()));
         }
         if (lock.isHeldByCurrentThread()) {
             if (lock.getHoldCount() == 1) {
@@ -97,7 +101,7 @@ public class EntityLocker<T> implements IEntityLocker<T> {
             }
             lock.unlock();
         } else {
-            throw new IllegalStateException(String.format("The lock of entity with id %s is held by another thread", entityId.toString()));
+            throw new OtherThreadEntityUnlockAttemptException(String.format("The lock of entity with id %s is held by another thread", entityId.toString()));
         }
     }
 

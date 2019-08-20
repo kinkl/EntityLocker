@@ -1,5 +1,8 @@
 package com.kinkl;
 
+import com.kinkl.exception.DeadlockThreatException;
+import com.kinkl.exception.MissingEntityLockException;
+import com.kinkl.exception.OtherThreadEntityUnlockAttemptException;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -59,14 +62,14 @@ public class EntityLockerTest {
 
     @Test
     public void testUnlockThrowsExceptionWhenEntityWasNotLocked() {
-        this.expectedRule.expect(IllegalStateException.class);
+        this.expectedRule.expect(MissingEntityLockException.class);
         this.expectedRule.expectMessage("There is no associated locks for entity with id 123");
         this.entityLocker.unlock(123);
     }
 
     @Test
     public void testUnlockThrowsExceptionWhenEntityIsLockedByAnotherThread() {
-        this.expectedRule.expect(IllegalStateException.class);
+        this.expectedRule.expect(OtherThreadEntityUnlockAttemptException.class);
         this.expectedRule.expectMessage("The lock of entity with id 123 is held by another thread");
         CountDownLatch subThreadLockedEntityLatch = new CountDownLatch(1);
         CountDownLatch subThreadIsAllowedToUnlockEntityLatch = new CountDownLatch(1);
@@ -365,7 +368,7 @@ public class EntityLockerTest {
 
     @Test
     public void testDeadlockIsPrevented() {
-        this.expectedRule.expect(IllegalStateException.class);
+        this.expectedRule.expect(DeadlockThreatException.class);
         this.expectedRule.expectMessage("Thread [Main Thread] cannot lock entity with id 456 because this will cause a deadlock. This entity is already locked by thread [Sub Thread]");
         Thread.currentThread().setName("Main Thread");
         CountDownLatch mainThreadIsAboutToCauseDeadlockLatch = new CountDownLatch(1);
